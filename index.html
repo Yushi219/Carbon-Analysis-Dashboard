@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carbon Analysis Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.1.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/patternomaly@1.3.2/dist/patternomaly.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #ffffff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .input-section {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .input-group input {
+            width: 80px;
+            padding: 5px;
+            border: 1px solid #ccc;
+        }
+        .input-group label {
+            min-width: 150px;
+        }
+        .calculated-value {
+            color: #666;
+            margin-left: 10px;
+        }
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .chart-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .chart-box h3 {
+            margin-top: 0;
+            color: #333;
+            text-align: center;
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        .stats-box {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        .stat-item {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Carbon Analysis Dashboard</h1>
+        
+        <div class="input-section">
+            <div>
+                <h3>EUI (kBtu/sf)</h3>
+                <div class="input-group">
+                    <label>Target EUI:</label>
+                    <input type="number" id="TargetEUI" value="60" onchange="updateCalculations()">
+                    <div class="calculated-value">
+                        <span id="reductionPercent" style="margin-right: 10px; font-weight: bold;">-87%</span>
+                        Reduction from baseline
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label>EUI from Renewables:</label>
+                    <input type="number" id="renewablesEUI" value="20" onchange="updateCalculations()">
+                    <div class="calculated-value">-<span id="renewablesPercent">50</span>% Renewables</div>
+                </div>
+            </div>
+            
+            <div>
+                <h3>EMBODIED</h3>
+                <div class="input-group">
+                    <label>Reduction:</label>
+                    <input type="number" id="embodiedReduction" value="30" onchange="updateCalculations()">
+                    <span>%</span>
+                </div>
+                <div class="input-group">
+                    <label>Existing Structure:</label>
+                    <input type="number" id="existingStructure" value="20" onchange="updateCalculations()">
+                    <span>%</span>
+                </div>
+                <div class="input-group">
+                    <label>Existing Envelope:</label>
+                    <input type="number" id="existingEnvelope" value="50" onchange="updateCalculations()">
+                    <span>%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-box">
+            <div class="stat-item">
+                <strong>PV Area Needed:</strong> <span id="pvArea">71,831</span> sf
+            </div>
+            <div class="stat-item">
+                <strong>Number of Roofs:</strong> <span id="roofCount">2.4</span>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-box">
+                <h3>Operational Carbon (kBtu/sf)</h3>
+                <canvas id="operationalChart"></canvas>
+            </div>
+            
+            <div class="chart-box">
+                <h3>Embodied Carbon (kg/sf)</h3>
+                <canvas id="embodiedChart"></canvas>
+            </div>
+            
+            <div class="chart-box full-width">
+                <h3>Total Carbon Emissions</h3>
+                <canvas id="totalCarbonChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let operationalChart, embodiedChart, totalCarbonChart;
+
+        function initializeCharts() {
+            // Operational Carbon Chart
+            const ctxOp = document.getElementById('operationalChart').getContext('2d');
+            operationalChart = new Chart(ctxOp, {
+                type: 'bar',
+                data: {
+                    labels: [''],
+                    datasets: [{
+                        label: 'Net EUI',
+                        data: [-60],  // Will be updated with (Base EUI - EUI from Renewables)
+                        backgroundColor: '#FF1493',  // Solid pink
+                        barPercentage: 1,
+                        categoryPercentage: 0.8,
+                        stack: 'stack0'
+                    },
+                    {
+                        label: 'EUI Renewables',
+                        data: [90],  // Will be updated with EUI from Renewables
+                        backgroundColor: pattern.draw('diagonal-right-left', '#FF1493'),  // Diagonal pattern
+                        barPercentage: 1,
+                        categoryPercentage: 0.8,
+                        stack: 'stack0'
+                    },
+                    {
+                        label: 'Remaining EUI',
+                        data: [195],  // Will be updated with (225 - Base EUI)
+                        backgroundColor: '#FFFFFF',  // White fill
+                        borderColor: '#FF1493',     // Pink border
+                        borderWidth: 2,
+                        barPercentage: 1,
+                        categoryPercentage: 0.8,
+                        stack: 'stack0'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: {
+                                display: true,
+                                color: function(context) {
+                                    if (context.tick.value === 0) {
+                                        return '#666';  // Make 0% line darker
+                                    }
+                                    return '#e0e0e0';  // Other grid lines lighter
+                                }
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                },
+                                stepSize: 10,
+                                autoSkip: false
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Embodied Carbon Chart
+            const ctxEm = document.getElementById('embodiedChart').getContext('2d');
+            embodiedChart = new Chart(ctxEm, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Existing', 'Reduction'],
+                    datasets: [{
+                        data: [28, 72],
+                        backgroundColor: ['#808080', '#FFFFFF'],
+                        borderColor: ['#808080', '#808080'],
+                        borderWidth: 2,
+                        rotation: 0  // Changed to 0 to start from 12 o'clock
+                    }]
+                },
+                options: {
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    aspectRatio: 2.5,
+                    maintainAspectRatio: true
+                }
+            });
+
+            // Register the plugin only once
+            if (!Chart.registry.plugins.get('centerText')) {
+                Chart.register({
+                    id: 'centerText',
+                    afterDraw: (chart) => {
+                        if (chart.config.type === 'doughnut') {
+                            const { ctx, width, height } = chart;
+                            ctx.restore();
+                            const fontSize = (height / 114).toFixed(2);
+                            ctx.font = fontSize + 'em sans-serif';
+                            ctx.textBaseline = 'middle';
+                            ctx.textAlign = 'center';
+                            ctx.fillStyle = '#333';
+                            ctx.fillText(chart.options.plugins.centerText || '', width / 2, height / 2);
+                            ctx.save();
+                        }
+                    }
+                });
+            }
+
+            // Total Carbon Emissions Chart
+            const ctxTotal = document.getElementById('totalCarbonChart').getContext('2d');
+            totalCarbonChart = new Chart(ctxTotal, {
+                type: 'bar',
+                data: {
+                    labels: Array.from({length: 25}, (_, i) => i + 1),
+                    datasets: [
+                        {
+                            label: 'EMBODIED',
+                            data: Array(25).fill(0),
+                            backgroundColor: '#808080',
+                            order: 2
+                        },
+                        {
+                            label: 'OPERATIONAL',
+                            data: Array(25).fill(0),
+                            backgroundColor: '#FF1493',
+                            order: 1
+                        },
+                        {
+                            label: 'Baseline',
+                            data: Array(25).fill(0),
+                            type: 'line',
+                            borderColor: '#000000',
+                            borderWidth: 2,
+                            fill: false,
+                            order: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            stacked: true,
+                            min: 0,
+                            max: 80000000,
+                            ticks: {
+                                stepSize: 10000000,
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'kg CO2eq'
+                            },
+                            grid: {
+                                color: '#e0e0e0'
+                            }
+                        },
+                        x: {
+                            stacked: true,
+                            title: {
+                                display: true,
+                                text: 'Years'
+                            },
+                            grid: {
+                                display: true,
+                                color: '#e0e0e0'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let value = context.raw;
+                                    return `${context.dataset.label}: ${value.toLocaleString()} kg CO2eq`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCalculations() {
+            const TargetEUI = parseFloat(document.getElementById('TargetEUI').value);
+            const renewablesEUI = parseFloat(document.getElementById('renewablesEUI').value);
+            const embodiedReduction = parseFloat(document.getElementById('embodiedReduction').value);
+            const existingStructure = parseFloat(document.getElementById('existingStructure').value);
+            const existingEnvelope = parseFloat(document.getElementById('existingEnvelope').value);
+
+            // Calculate reduction from baseline using the correct formula
+            const reductionFromBaseline = ((TargetEUI / 225) - 1) * 100;
+            
+            // Calculate renewables percentage for display
+            const renewablesDisplayPercent = ((TargetEUI - renewablesEUI) / TargetEUI) * 100;
+            
+            // Update displayed values
+            document.getElementById('reductionPercent').textContent = `${reductionFromBaseline.toFixed(0)}%`;
+            document.getElementById('renewablesPercent').textContent = Math.abs(renewablesDisplayPercent).toFixed(0);
+
+            // Calculate actual values for the bars
+            const netEUI = TargetEUI - renewablesEUI;  // 实心条
+            const renewablesValue = renewablesEUI;    // 斜线条
+            const remainingValue = 225 - TargetEUI;     // 空心条
+
+            // Convert to percentages for chart
+            const netEUIPercent = (netEUI / 225) * 100;
+            const renewablesChartPercent = (renewablesValue / 225) * 100;
+            const remainingPercent = (remainingValue / 225) * 100;
+
+            // Update the chart with percentage values
+            operationalChart.data.datasets[0].data = [netEUIPercent];
+            operationalChart.data.datasets[1].data = [renewablesChartPercent];
+            operationalChart.data.datasets[2].data = [remainingPercent];
+
+            // Update x-axis settings
+            operationalChart.options.scales.x.min = Math.min(0, Math.floor(netEUIPercent / 10) * 10);  // Round down to nearest 10
+            operationalChart.options.scales.x.max = 100;  // Set maximum to 100%
+            operationalChart.options.scales.x.ticks.callback = function(value) {
+                return value + '%';  // Show percentage values
+            };
+
+            // Calculate positions for Target EUI and Baseline EUI labels
+            const chartPosition = operationalChart.chartArea;
+            const barWidth = chartPosition.right - chartPosition.left;
+            
+            // Calculate the end position of the pattern section (renewables)
+            const patternEndPercent = netEUIPercent + renewablesChartPercent;
+            const patternEndPixels = chartPosition.left + (barWidth * (patternEndPercent - Math.min(0, netEUIPercent)) / (100 - Math.min(0, netEUIPercent)));
+
+            // Add Target EUI label (at pattern section)
+            const targetLabel = document.createElement('div');
+            targetLabel.className = 'chart-label';
+            targetLabel.style.cssText = `
+                position: absolute;
+                left: ${patternEndPixels + 30}px;
+                top: ${chartPosition.top + 55}px;
+                transform: translateX(-50%);
+                color: #FF1493;
+                font-weight: bold;
+                white-space: nowrap;
+            `;
+            targetLabel.textContent = `Target EUI: ${TargetEUI}`;
+
+            // Add Baseline EUI label (at empty section)
+            const baselineLabel = document.createElement('div');
+            baselineLabel.className = 'chart-label';
+            baselineLabel.style.cssText = `
+                position: absolute;
+                left: ${chartPosition.right}px;
+                top: ${chartPosition.top +55}px;
+                transform: translateX(-50%);
+                color: #FF1493;
+                font-weight: bold;
+                white-space: nowrap;
+            `;
+            baselineLabel.textContent = `Baseline EUI: 225`;
+            
+            const chartContainer = operationalChart.canvas.parentNode;
+            chartContainer.style.position = 'relative';
+            
+            // Remove existing labels
+            const existingLabels = chartContainer.querySelectorAll('.chart-label');
+            existingLabels.forEach(label => label.remove());
+            
+            chartContainer.appendChild(targetLabel);
+            chartContainer.appendChild(baselineLabel);
+            
+            operationalChart.update();
+
+            // Calculate PV Area and Number of Roofs using exact Excel formulas
+            const pvArea = (TargetEUI * 85000) / 71;
+            const numberOfRoofs = pvArea / 30000;
+
+            // Update display with formatted numbers
+            document.getElementById('pvArea').textContent = Math.round(pvArea).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            document.getElementById('roofCount').textContent = numberOfRoofs.toFixed(1);
+
+            // Update Embodied Carbon Chart
+            const baseline = 65; // Fixed baseline value (kg/sf)
+            const olinArea = 60000; // Fixed Olin Area
+            const remaining = 25000; // Fixed Remaining value
+            
+            // Industry averages
+            const structureIndustryAvg = 44;
+            const envelopeIndustryAvg = 10;
+            const interiorIndustryAvg = 11;
+            
+            // Remaining values
+            const structureRemain = 0;
+            const envelopeRemain = 0;
+            const interiorRemain = 7;
+            
+            // Calculate new values based on reduction
+            const structureNew = structureIndustryAvg * (1 - embodiedReduction / 100);
+            const envelopeNew = envelopeIndustryAvg * (1 - embodiedReduction / 100);
+            const interiorsNew = interiorIndustryAvg * (1 - embodiedReduction / 100);
+            
+            // Calculate total values
+            const structureTotal = (structureRemain * (existingStructure / 100)) + ((1 - (existingStructure / 100)) * structureNew);
+            const envelopeTotal = (envelopeRemain * (existingEnvelope / 100)) + ((1 - (existingEnvelope / 100)) * envelopeNew);
+            const interiorTotal = interiorsNew;
+            
+            // Calculate All Total
+            const allTotal = structureTotal + envelopeTotal + interiorTotal;
+            
+            // Calculate Improved Final and Reduction Final
+            const improvedFinal = (((baseline * (1 - (embodiedReduction / 100))) * remaining) + (allTotal * olinArea)) / (olinArea + remaining);
+            const reductionFinal = baseline - improvedFinal;
+            
+            // Update chart data and center text
+            embodiedChart.data.datasets[0].data = [improvedFinal, reductionFinal];
+            embodiedChart.data.datasets[0].backgroundColor = ['#808080', '#FFFFFF'];
+            embodiedChart.data.datasets[0].borderColor = ['#808080', '#808080'];
+            embodiedChart.data.datasets[0].borderWidth = 2;
+            embodiedChart.data.datasets[0].rotation = 0;  // Changed to 0 to start from 12 o'clock
+
+            // Calculate Present Final
+            const presentFinal = ((improvedFinal / baseline - 1) * 100).toFixed(0);
+            
+            // Update the center text through chart options
+            embodiedChart.options.plugins.centerText = `${presentFinal}%`;
+            
+            // Update the chart
+            embodiedChart.update();
+
+            // Update Total Carbon Chart calculation
+            const pEUI = TargetEUI - renewablesEUI;
+            const bldgArea = 85000;
+            const oeFactor = 0.139;
+            const totalRenovation = 1;
+            
+            // Calculate REC (Embodied Carbon) - constant value for all years
+            const REC = bldgArea * improvedFinal * totalRenovation;
+            const RECArray = Array(25).fill(REC);
+            
+            // Calculate Operational Carbon for each year
+            let operationalEmissions = [];
+            let currentOE = 0;
+            let yearlyEmission = bldgArea * pEUI * oeFactor;
+            
+            for (let i = 0; i < 25; i++) {
+                currentOE += yearlyEmission;  // Add this year's emissions
+                operationalEmissions.push(currentOE);  // Store cumulative total
+            }
+
+            // Calculate baseline emissions (black line) - using TargetEUI=225 for operational + current REC
+            let baselineEmissions = [];
+            let baselineCurrentOE = 0;
+            let baselineYearlyEmission = bldgArea * 225 * oeFactor;  // Using full 225 EUI for baseline
+            
+            for (let i = 0; i < 25; i++) {
+                baselineCurrentOE += baselineYearlyEmission;
+                baselineEmissions.push(baselineCurrentOE + REC);  // Add baseline operational + current embodied
+            }
+
+            // Update chart datasets
+            totalCarbonChart.data.datasets = [
+                {
+                    label: 'OPERATIONAL',
+                    data: operationalEmissions,
+                    backgroundColor: '#FF1493',
+                    order: 2,
+                    stack: 'stack1'
+                },
+                {
+                    label: 'EMBODIED',
+                    data: RECArray,
+                    backgroundColor: '#808080',
+                    order: 1,
+                    stack: 'stack1'
+                },
+                {
+                    label: 'Baseline',
+                    data: baselineEmissions,
+                    type: 'line',
+                    borderColor: '#000000',
+                    borderWidth: 2,
+                    fill: false,
+                    order: 0,
+                    stack: 'stack2'  // 使用不同的stack确保折线不参与堆叠
+                }
+            ];
+
+            totalCarbonChart.update();
+        }
+
+        // Initialize on page load
+        window.onload = function() {
+            initializeCharts();
+            updateCalculations();
+        };
+    </script>
+</body>
+</html>
