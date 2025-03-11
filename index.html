@@ -90,7 +90,7 @@
                 <div class="input-group">
                     <label>EUI from Renewables:</label>
                     <input type="number" id="renewablesEUI" value="20" onchange="updateCalculations()">
-                    <div class="calculated-value">-<span id="renewablesPercent">50</span>% Renewables</div>
+                    <div class="calculated-value"><span id="renewablesPercent">50</span>% </span> Renewables</div>
                 </div>
             </div>
             
@@ -422,7 +422,7 @@
             `;
             baselineLabel.textContent = `Baseline EUI: 225`;
             
-            const chartContainer = operationalChart.canvas.parentNode;
+            let chartContainer = operationalChart.canvas.parentNode;
             chartContainer.style.position = 'relative';
             
             // Remove existing labels
@@ -482,7 +482,7 @@
             embodiedChart.data.datasets[0].rotation = 0;  // Changed to 0 to start from 12 o'clock
 
             // Calculate Present Final
-            const presentFinal = ((improvedFinal / baseline - 1) * 100).toFixed(0);
+            const presentFinal = ((reductionFinal/improvedFinal) * 100).toFixed(0);
             
             // Update the center text through chart options
             embodiedChart.options.plugins.centerText = `${presentFinal}%`;
@@ -493,7 +493,7 @@
             // Update Total Carbon Chart calculation
             const pEUI = TargetEUI - renewablesEUI;
             const bldgArea = 85000;
-            const oeFactor = 0.139;
+            const oeFactor = 0.138518294;
             const totalRenovation = 1;
             
             // Calculate REC (Embodied Carbon) - constant value for all years
@@ -519,6 +519,11 @@
                 baselineCurrentOE += baselineYearlyEmission;
                 baselineEmissions.push(baselineCurrentOE + REC);  // Add baseline operational + current embodied
             }
+
+            // Calculate Total Reduction using the specified formula
+            const year25OE = operationalEmissions[24];  // 第25年的OE值
+            const year25Total = year25OE + REC;  // 第25年的OE值 + 第25年的REC值
+            const totalReduction = ((year25Total / 71754059.3107316) - 1) * 100;
 
             // Update chart datasets
             totalCarbonChart.data.datasets = [
@@ -549,6 +554,31 @@
             ];
 
             totalCarbonChart.update();
+
+            // Add Total Reduction label
+            chartContainer = totalCarbonChart.canvas.parentNode;
+            chartContainer.style.position = 'relative';
+            
+            // Remove existing Total Reduction label if any
+            const existingLabel = chartContainer.querySelector('.total-reduction-label');
+            if (existingLabel) {
+                existingLabel.remove();
+            }
+            
+            const totalReductionLabel = document.createElement('div');
+            totalReductionLabel.className = 'total-reduction-label';
+            totalReductionLabel.style.cssText = `
+                position: absolute;
+                right: 20px;
+                top: 20px;
+                background-color: #f5f5f5;
+                padding: 10px;
+                border-radius: 4px;
+                font-weight: bold;
+            `;
+            totalReductionLabel.textContent = `Total Reduction = ${totalReduction.toFixed(0)}%`;
+            
+            chartContainer.appendChild(totalReductionLabel);
         }
 
         // Initialize on page load
